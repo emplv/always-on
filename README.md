@@ -25,6 +25,16 @@ A small macOS menu bar app that keeps your Mac (and its display) awake.
 Needs the Xcode command line tools; runs on macOS 13+. Install to /Applications before relying on
 start at login: the login item points at the app's location.
 
+Or open `AlwaysOn.xcodeproj` in Xcode and press ⌘R. It builds the same app (signed to run
+locally, no sandbox, which the lid-closed mode needs). `Sources/` is a synced folder, so new
+`.swift` files there are picked up by both Xcode and `build.sh`. Universal Release build from the
+command line:
+
+```sh
+xcodebuild -project AlwaysOn.xcodeproj -scheme AlwaysOn -configuration Release \
+  -derivedDataPath build/DerivedData build
+```
+
 ## How it works
 
 - Keep always on: a `ProcessInfo` activity holding `PreventUserIdleSystemSleep` +
