@@ -11,7 +11,8 @@ choose, or only while your coding agents are working.
 | **[Always On Lite](https://alwayson.emplv.com/downloads/AlwaysOn-Lite.dmg)** | Everything except the lid-closed mode, so it never asks for admin rights. |
 
 Free, signed and notarized by Apple, for macOS 13 or later on Apple silicon and Intel. Open the
-DMG and drag the app to Applications. More at [alwayson.emplv.com](https://alwayson.emplv.com).
+DMG and drag the app to Applications. More at [alwayson.emplv.com](https://alwayson.emplv.com);
+what changed in each version: [CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 
@@ -25,10 +26,12 @@ DMG and drag the app to Applications. More at [alwayson.emplv.com](https://alway
   are busy, and shows how many: `3 agents working: 2 Claude, 1 Codex`. Works with Claude Code,
   Codex (CLI and app), Gemini CLI, Qwen Code, OpenCode, Aider and Cursor's `cursor-agent`, in
   any terminal, tmux, an IDE's terminal or the Codex app, with no setup. Idle sessions don't
-  count, so a forgotten `claude` tab doesn't keep the Mac up for days.
-- **Keep awake with lid closed** (Full build, MacBooks only): a sub-switch under each of the two
-  switches above, shown while that switch is on. Close the lid, walk away, and the session or
-  the agents carry on. It asks for your admin password once; see [How it works](#how-it-works).
+  count, so a forgotten `claude` tab doesn't keep the Mac up for days. The two switches above
+  are modes: turning one on turns the other off.
+- **Keep awake with lid closed** (Full build, MacBooks only): one switch below both modes that
+  applies to whichever is on, and is grayed out while both are off. Close the lid, walk away,
+  and the session or the agents carry on. It asks for your admin password once; see
+  [How it works](#how-it-works).
 - **Uptime warning**: from 45 days of uptime the menu bar icon turns into ⚠︎, plus a daily
   notification. After 49.7 days macOS stops opening new network connections until it restarts
   (its 32-bit `tcp_now` clock overflows).

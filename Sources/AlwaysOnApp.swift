@@ -57,16 +57,6 @@ struct PanelView: View {
                 titleFont: .headline
             )
 
-            if session.isOn, LidSleep.hasLid {
-                SwitchRow(
-                    title: "Keep awake with lid closed",
-                    isOn: Binding(get: { session.lidClosed }, set: session.setLidClosed),
-                    caption: session.lidCaption,
-                    captionColor: session.lidError == nil ? .secondary : .red
-                )
-                .padding(.leading, 16)
-            }
-
             if let countdown = session.countdownText {
                 HStack {
                     Text(countdown)
@@ -104,14 +94,17 @@ struct PanelView: View {
                 caption: session.agentCaption
             )
 
-            if session.keepAwakeForAgents, LidSleep.hasLid {
+            if LidSleep.hasLid {
+                Divider()
+
+                // One setting for both modes; it does nothing while both are off.
                 SwitchRow(
                     title: "Keep awake with lid closed",
-                    isOn: Binding(get: { session.agentLidClosed }, set: session.setAgentLidClosed),
-                    caption: session.agentLidCaption,
-                    captionColor: session.agentLidError == nil ? .secondary : .red
+                    isOn: Binding(get: { session.lidClosed }, set: session.setLidClosed),
+                    caption: session.lidCaption,
+                    captionColor: session.lidError == nil ? .secondary : .red
                 )
-                .padding(.leading, 16)
+                .disabled(!session.isModeOn)
             }
 
             Divider()
