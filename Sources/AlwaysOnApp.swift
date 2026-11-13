@@ -24,7 +24,7 @@ struct AlwaysOnApp: App {
 
     private var menuBarSymbol: String {
         if session.uptimeStatus != .ok { return "exclamationmark.triangle.fill" }
-        return session.isOn ? "cup.and.saucer.fill" : "cup.and.saucer"
+        return session.isKeepingAwake ? "cup.and.saucer.fill" : "cup.and.saucer"
     }
 }
 
@@ -57,6 +57,16 @@ struct PanelView: View {
                 titleFont: .headline
             )
 
+            if session.isOn, LidSleep.hasLid {
+                SwitchRow(
+                    title: "Keep awake with lid closed",
+                    isOn: Binding(get: { session.lidClosed }, set: session.setLidClosed),
+                    caption: session.lidCaption,
+                    captionColor: session.lidError == nil ? .secondary : .red
+                )
+                .padding(.leading, 16)
+            }
+
             if let countdown = session.countdownText {
                 HStack {
                     Text(countdown)
@@ -86,13 +96,22 @@ struct PanelView: View {
                 )
             }
 
-            if LidSleep.hasLid {
+            Divider()
+
+            SwitchRow(
+                title: "Keep awake while agents work",
+                isOn: Binding(get: { session.keepAwakeForAgents }, set: session.setKeepAwakeForAgents),
+                caption: session.agentCaption
+            )
+
+            if session.keepAwakeForAgents, LidSleep.hasLid {
                 SwitchRow(
                     title: "Keep awake with lid closed",
-                    isOn: Binding(get: { session.lidClosed }, set: session.setLidClosed),
-                    caption: session.lidCaption,
-                    captionColor: session.lidError == nil ? .secondary : .red
+                    isOn: Binding(get: { session.agentLidClosed }, set: session.setAgentLidClosed),
+                    caption: session.agentLidCaption,
+                    captionColor: session.agentLidError == nil ? .secondary : .red
                 )
+                .padding(.leading, 16)
             }
 
             Divider()

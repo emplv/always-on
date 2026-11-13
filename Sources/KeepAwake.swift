@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 enum SessionLength: String, CaseIterable, Identifiable {
@@ -60,6 +61,8 @@ final class KeepAwake: ObservableObject {
         static let lidClosed = "keepAwakeWithLidClosed"
         static let lidSleepDisabledByApp = "lidSleepDisabledByApp"
         static let lastUptimeWarning = "lastUptimeWarning"
+        static let keepAwakeForAgents = "keepAwakeForAgents"
+        static let agentLidClosed = "keepAwakeWithLidClosedForAgents"
     }
 
     @Published private(set) var isOn: Bool
@@ -70,9 +73,16 @@ final class KeepAwake: ObservableObject {
     @Published private(set) var lidClosed: Bool
     @Published private(set) var lidError: String?
     @Published private(set) var now = Date()
+    @Published private(set) var keepAwakeForAgents: Bool
+    @Published private(set) var agentLidClosed: Bool
+    @Published private(set) var agentLidError: String?
+    @Published private(set) var agentActivity = AgentActivity.none
 
     private let defaults = UserDefaults.standard
+    private let agents = AgentMonitor()
     private var activity: NSObjectProtocol?
+    private var agentPowerActivity: NSObjectProtocol?
+    private var agentSubscription: AnyCancellable?
     private var ticker: Task<Void, Never>?
 
     init() {
@@ -83,6 +93,8 @@ final class KeepAwake: ObservableObject {
         untilDate = defaults.object(forKey: Key.untilDate) as? Date ?? Self.defaultUntilDate()
         endDate = defaults.object(forKey: Key.endDate) as? Date
         lidClosed = defaults.bool(forKey: Key.lidClosed)
+        keepAwakeForAgents = defaults.bool(forKey: Key.keepAwakeForAgents)
+        agentLidClosed = defaults.bool(forKey: Key.agentLidClosed)
 
         // A timed session that ended while the app wasn't running (e.g. across a restart).
         if isOn, let endDate, endDate <= now {
@@ -92,6 +104,12 @@ final class KeepAwake: ObservableObject {
         }
         apply(interactive: false)
         restartTicker()
+
+        agentSubscription = agents.$activity
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] activity in self?.agentActivityChanged(activity) }
+        if keepAwakeForAgents { agents.start() }
     }
 
     // MARK: - Actions
@@ -130,6 +148,31 @@ final class KeepAwake: ObservableObject {
         applyLidSleep(interactive: true)
     }
 
+    func setKeepAwakeForAgents(_ on: Bool) {
+        keepAwakeForAgents = on
+        save()
+        if on { agents.start() } else { agents.stop() }
+        apply(interactive: true)
+    }
+
+    /// Sets up passwordless lid control right away: later it switches on unattended, whenever
+    /// agents start working.
+    func setAgentLidClosed(_ on: Bool) {
+        agentLidError = nil
+        if on, LidSleep.hasLid {
+            do {
+                try LidSleep.authorize()
+            } catch {
+                if case LidSleep.Failure.cancelled = error { return }
+                agentLidError = error.localizedDescription
+                return
+            }
+        }
+        agentLidClosed = on
+        save()
+        applyLidSleep(interactive: true)
+    }
+
     /// Called when the app quits: undo the lid setting so it can't outlive the app.
     func prepareForQuit() {
         guard defaults.bool(forKey: Key.lidSleepDisabledByApp) else { return }
@@ -151,9 +194,14 @@ final class KeepAwake: ObservableObject {
 
     // MARK: - Display text
 
+    /// Agents are working and the agent switch is on, so the Mac and display stay awake.
+    var agentsKeepAwake: Bool { keepAwakeForAgents && agentActivity.isWorking }
+    var isKeepingAwake: Bool { isOn || agentsKeepAwake }
+
     var statusText: String {
         guard isOn else {
             if length == .untilDate, untilDate <= now { return "Pick a time in the future." }
+            if agentsKeepAwake { return "Agents are working, so the Mac and display stay awake for now." }
             return "Your Mac follows its normal sleep settings."
         }
         guard let endDate else { return "Mac and display stay awake until you turn this off." }
@@ -192,8 +240,19 @@ final class KeepAwake: ObservableObject {
     var lidCaption: String {
         if let lidError { return lidError }
         if !lidClosed { return "Asks for your admin password the first time." }
-        if !isOn { return "Applies while Keep always on is on." }
         return "Stays awake when closed. Keep it ventilated, not in a bag."
+    }
+
+    var agentCaption: String {
+        keepAwakeForAgents
+            ? agentActivity.summary
+            : "Mac and display stay awake while Claude, Codex and other agents work."
+    }
+
+    var agentLidCaption: String {
+        if let agentLidError { return agentLidError }
+        if !agentLidClosed { return "Asks for your admin password the first time." }
+        return "Stays awake when closed while agents work. Keep it ventilated."
     }
 
     var uptime: TimeInterval { now.timeIntervalSince(Uptime.bootDate) }
@@ -239,13 +298,33 @@ final class KeepAwake: ObservableObject {
             ProcessInfo.processInfo.endActivity(activity)
             self.activity = nil
         }
+        applyAgentAssertion()
         applyLidSleep(interactive: interactive)
+    }
+
+    private func agentActivityChanged(_ activity: AgentActivity) {
+        agentActivity = activity
+        apply(interactive: false)
+    }
+
+    private func applyAgentAssertion() {
+        if agentsKeepAwake, agentPowerActivity == nil {
+            agentPowerActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleDisplaySleepDisabled],
+                reason: "Always On: agents are working"
+            )
+        } else if !agentsKeepAwake, let agentPowerActivity {
+            ProcessInfo.processInfo.endActivity(agentPowerActivity)
+            self.agentPowerActivity = nil
+        }
     }
 
     /// Lid-closed sleep is a system-wide setting (unlike assertions), so we track whether
     /// we changed it and only ever undo our own change.
     private func applyLidSleep(interactive: Bool) {
-        let wanted = isOn && lidClosed && LidSleep.hasLid
+        let forSession = isOn && lidClosed
+        let forAgents = agentsKeepAwake && agentLidClosed
+        let wanted = (forSession || forAgents) && LidSleep.hasLid
         let disabledByUs = defaults.bool(forKey: Key.lidSleepDisabledByApp)
         do {
             if wanted, !LidSleep.isSleepDisabled {
@@ -259,11 +338,13 @@ final class KeepAwake: ObservableObject {
             }
         } catch {
             if wanted {
-                lidClosed = false
+                if forSession { lidClosed = false }
+                if forAgents { agentLidClosed = false }
                 save()
             }
             if case LidSleep.Failure.cancelled = error { return }
-            lidError = error.localizedDescription
+            if forAgents { agentLidError = error.localizedDescription }
+            if forSession || !wanted { lidError = error.localizedDescription }
         }
     }
 
@@ -281,6 +362,8 @@ final class KeepAwake: ObservableObject {
         defaults.set(untilDate, forKey: Key.untilDate)
         defaults.set(endDate, forKey: Key.endDate)
         defaults.set(lidClosed, forKey: Key.lidClosed)
+        defaults.set(keepAwakeForAgents, forKey: Key.keepAwakeForAgents)
+        defaults.set(agentLidClosed, forKey: Key.agentLidClosed)
     }
 
     /// Tomorrow at the next full hour.

@@ -17,7 +17,19 @@ enum LidSleep {
             }
         }
     }
+}
 
+#if LITE
+/// The Lite build (`./build.sh --lite`) has no lid-closed mode, so it never asks for admin
+/// rights: no sudoers rule and no `pmset` in the binary. With no lid, the switches stay hidden.
+extension LidSleep {
+    static let hasLid = false
+    static let isSleepDisabled = false
+    static func setSleepDisabled(_ disabled: Bool, interactive: Bool) throws {}
+    static func authorize() throws {}
+}
+#else
+extension LidSleep {
     private static let pmset = "/usr/bin/pmset"
     static let sudoersFile = "/etc/sudoers.d/always-on"
 
@@ -38,6 +50,20 @@ enum LidSleep {
         guard run("/usr/bin/sudo", arguments) == 0 else {
             throw Failure.failed("macOS didn't allow changing the lid setting.")
         }
+    }
+
+    /// Makes sure the lid setting can later change without a password (e.g. when an agent
+    /// starts working while you're away), asking for the admin password now if needed.
+    static func authorize() throws {
+        guard !isAuthorized else { return }
+        try installSudoersRule()
+        guard isAuthorized else { throw Failure.failed("macOS didn't allow changing the lid setting.") }
+    }
+
+    /// Re-applies the current value, which changes nothing. (`sudo -l` can't tell: it also
+    /// says yes to commands an admin may run with a password.)
+    private static var isAuthorized: Bool {
+        run("/usr/bin/sudo", ["-n", pmset, "-a", "disablesleep", isSleepDisabled ? "1" : "0"]) == 0
     }
 
     /// Validates the rule with visudo before installing it: a broken sudoers file would break sudo.
@@ -87,3 +113,4 @@ enum LidSleep {
         return process.terminationStatus
     }
 }
+#endif
