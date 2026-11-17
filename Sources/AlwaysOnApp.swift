@@ -102,7 +102,7 @@ struct PanelView: View {
                     title: "Keep awake with lid closed",
                     isOn: Binding(get: { session.lidClosed }, set: session.setLidClosed),
                     caption: session.lidCaption,
-                    captionColor: session.lidError == nil ? .secondary : .red
+                    captionColor: session.lidError != nil ? .red : session.powerStop != nil ? .orange : .secondary
                 )
                 .disabled(!session.isModeOn)
             }

@@ -2,6 +2,12 @@
 
 Downloads for every version: [alwayson.emplv.com/changelog](https://alwayson.emplv.com/changelog).
 
+## Unreleased
+
+- Battery and heat stops for "Keep awake with lid closed": on battery below 10%, or when the
+  Mac gets seriously hot, a closed Mac goes to sleep, and the panel says why. Needs no new
+  admin rights.
+
 ## 1.2 (13 November 2026)
 
 - "Keep always on" and "Keep awake while agents work" are now modes: turning one on turns the

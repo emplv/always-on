@@ -32,6 +32,9 @@ what changed in each version: [CHANGELOG.md](CHANGELOG.md).
   applies to whichever is on, and is grayed out while both are off. Close the lid, walk away,
   and the session or the agents carry on. It asks for your admin password once; see
   [How it works](#how-it-works).
+  - **Battery and heat stops**: on battery below 10%, or when macOS reports the Mac as
+    seriously hot, the lid setting goes back to macOS and a closed Mac goes to sleep. The panel
+    says why. It comes back on charger power or from 15%, and once the Mac has cooled down.
 - **Uptime warning**: from 45 days of uptime the menu bar icon turns into ⚠︎, plus a daily
   notification. After 49.7 days macOS stops opening new network connections until it restarts
   (its 32-bit `tcp_now` clock overflows).
@@ -74,6 +77,12 @@ never their contents).
   assertions, this setting outlives the app, so the app undoes it when it's no longer wanted,
   when the app quits, and on the next launch after a crash. The Lite build has none of this
   code.
+- **Battery and heat stops**: every tick (15 s, or 1 s during a countdown) the app reads the
+  internal battery (`IOPSCopyPowerSourcesInfo`) and macOS's thermal state
+  (`ProcessInfo.thermalState`, `serious` or `critical`; it holds until `nominal`). A stop runs
+  `pmset -a disablesleep 0`, which the rule already allows, and if the lid is closed with no
+  external display, asks for sleep with `IOPMSleepSystem` (no root needed): macOS sleeps on the
+  lid-close event, so a lid that closed earlier would otherwise wait for idle sleep.
 
 Check it's working:
 

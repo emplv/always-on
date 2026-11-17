@@ -13,6 +13,7 @@ enum AgentDetectionTests {
         cpuMeterTests(check)
         trackerTests(check)
         summaryTests(check)
+        powerRuleTests(check)
         print(check.failures == 0
               ? "All \(check.count) checks passed."
               : "\(check.failures) of \(check.count) checks failed.")

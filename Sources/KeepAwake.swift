@@ -78,6 +78,8 @@ final class KeepAwake: ObservableObject {
     /// whichever is on.
     @Published private(set) var keepAwakeForAgents: Bool
     @Published private(set) var agentActivity = AgentActivity.none
+    /// A low battery or heat that hands the lid setting back to macOS while it holds.
+    @Published private(set) var powerStop: PowerStop?
 
     private let defaults = UserDefaults.standard
     private let agents = AgentMonitor()
@@ -195,6 +197,7 @@ final class KeepAwake: ObservableObject {
             save()
             apply(interactive: false)
         }
+        if currentPowerStop() != powerStop { applyLidSleep(interactive: false) }
         warnAboutUptimeIfNeeded()
     }
 
@@ -249,6 +252,7 @@ final class KeepAwake: ObservableObject {
         if let lidError { return lidError }
         if !isModeOn { return "Works with either switch above." }
         if !lidClosed { return "Asks for your admin password the first time." }
+        if let powerStop { return powerStop.message }
         if keepAwakeForAgents { return "Stays awake when closed while agents work. Keep it ventilated." }
         return "Stays awake when closed. Keep it ventilated, not in a bag."
     }
@@ -326,7 +330,8 @@ final class KeepAwake: ObservableObject {
     /// Lid-closed sleep is a system-wide setting (unlike assertions), so we track whether
     /// we changed it and only ever undo our own change.
     private func applyLidSleep(interactive: Bool) {
-        let wanted = lidClosed && isKeepingAwake && LidSleep.hasLid
+        powerStop = currentPowerStop()
+        let wanted = lidClosed && isKeepingAwake && LidSleep.hasLid && powerStop == nil
         let disabledByUs = defaults.bool(forKey: Key.lidSleepDisabledByApp)
         do {
             if wanted, !LidSleep.isSleepDisabled {
@@ -337,6 +342,7 @@ final class KeepAwake: ObservableObject {
                     try LidSleep.setSleepDisabled(false, interactive: interactive)
                 }
                 defaults.set(false, forKey: Key.lidSleepDisabledByApp)
+                if powerStop != nil { LidSleep.sleepIfClosed() }
             }
         } catch {
             if wanted {
@@ -346,6 +352,13 @@ final class KeepAwake: ObservableObject {
             if case LidSleep.Failure.cancelled = error { return }
             lidError = error.localizedDescription
         }
+    }
+
+    /// Read on every tick (every 15 s, or every second during a countdown) while the lid
+    /// setting is on.
+    private func currentPowerStop() -> PowerStop? {
+        guard lidClosed, LidSleep.hasLid else { return nil }
+        return PowerRules.stop(after: powerStop, reading: .current())
     }
 
     private func warnAboutUptimeIfNeeded() {

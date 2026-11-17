@@ -1,5 +1,7 @@
+import CoreGraphics
 import Foundation
 import IOKit
+import IOKit.pwr_mgt
 
 /// Keeping a MacBook awake with the lid closed needs `pmset -a disablesleep 1`, which only
 /// root can run, and no app-level assertion can do it. The first time, the user approves
@@ -27,6 +29,7 @@ extension LidSleep {
     static let isSleepDisabled = false
     static func setSleepDisabled(_ disabled: Bool, interactive: Bool) throws {}
     static func authorize() throws {}
+    static func sleepIfClosed() {}
 }
 #else
 extension LidSleep {
@@ -58,6 +61,27 @@ extension LidSleep {
         guard !isAuthorized else { return }
         try installSudoersRule()
         guard isAuthorized else { throw Failure.failed("macOS didn't allow changing the lid setting.") }
+    }
+
+    /// macOS sleeps on the lid-close event, so a lid that closed while sleep was disabled stays
+    /// awake after `disablesleep 0` until idle sleep, which any app's assertion can hold off.
+    /// Asks for sleep (no root needed) when the lid is closed and no external display is in use.
+    static func sleepIfClosed() {
+        guard rootDomainProperty("AppleClamshellState") as? Bool == true, !hasExternalDisplay else { return }
+        let powerManagement = IOPMFindPowerManagement(kIOMainPortDefault)
+        guard powerManagement != IO_OBJECT_NULL else { return }
+        defer { IOServiceClose(powerManagement) }
+        IOPMSleepSystem(powerManagement)
+    }
+
+    /// Online, not active: an external display that has gone to sleep still means the Mac is
+    /// used closed, at a desk.
+    private static var hasExternalDisplay: Bool {
+        var count: UInt32 = 0
+        guard CGGetOnlineDisplayList(0, nil, &count) == .success, count > 0 else { return false }
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetOnlineDisplayList(count, &displays, &count) == .success else { return false }
+        return displays.prefix(Int(count)).contains { CGDisplayIsBuiltin($0) == 0 }
     }
 
     /// Re-applies the current value, which changes nothing. (`sudo -l` can't tell: it also
